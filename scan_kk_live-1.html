@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Scan KK - Cepat</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 16px;
+    background: #f2f4f7;
+  }
+  h2 { text-align: center; color: #333; margin-bottom: 4px; }
+  p.sub { text-align: center; color: #888; font-size: 13px; margin-top: 0; margin-bottom: 16px; }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .cam-wrap {
+    position: relative;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+    display: none;
+  }
+  video {
+    width: 100%;
+    display: block;
+  }
+  .scan-overlay {
+    position: absolute;
+    top: 30%;
+    left: 5%;
+    width: 90%;
+    height: 40%;
+    border: 2px dashed rgba(255,255,255,0.8);
+    border-radius: 6px;
+    pointer-events: none;
+  }
+  .live-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(220,38,38,0.9);
+    color: #fff;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: none;
+  }
+  .live-badge.on { display: block; }
+  canvas { display: none; }
+  button {
+    width: 100%;
+    padding: 12px;
+    margin-top: 8px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:disabled { background: #9ca3af; }
+  button.secondary { background: #6b7280; }
+  button.success { background: #16a34a; }
+  button.danger { background: #dc2626; }
+  button.small {
+    width: auto;
+    padding: 6px 10px;
+    font-size: 12px;
+    margin: 0;
+  }
+  #status {
+    text-align: center;
+    font-size: 13px;
+    color: #2563eb;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+  details {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #666;
+  }
+  textarea {
+    width: 100%;
+    height: 90px;
+    font-size: 11px;
+    margin-top: 6px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  th, td {
+    border: 1px solid #ddd;
+    padding: 6px;
+    text-align: left;
+  }
+  th { background: #f0f3f9; }
+  td.no-col {
+    text-align: center;
+    color: #888;
+    width: 32px;
+  }
+  td input {
+    width: 100%;
+    min-width: 90px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    padding: 2px;
+  }
+  td input:focus { background: #fffbe6; }
+  .row-actions { text-align: center; }
+  .empty-msg {
+    text-align: center;
+    color: #999;
+    font-size: 13px;
+    padding: 10px 0;
+  }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row button { margin-top: 8px; }
+  .candidate-box {
+    background: #fffbe6;
+    border: 1px solid #f0d050;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    display: none;
+  }
+  .candidate-box.show { display: block; }
+  .candidate-box .field { margin-bottom: 6px; }
+  .candidate-box label { font-size: 12px; color: #777; display:block; }
+  .candidate-box input {
+    width: 100%;
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h2>Live Scan KK</h2>
+<p class="sub">Nama, NIK, Tempat &amp; Tanggal Lahir — scan cepat</p>
+
+<div class="card">
+  <div class="cam-wrap" id="camWrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div class="scan-overlay"></div>
+    <div class="live-badge" id="liveBadge">● SCANNING</div>
+  </div>
+  <canvas id="canvas"></canvas>
+
+  <button id="startCamBtn">Buka Kamera & Mulai Scan</button>
+  <button id="stopCamBtn" class="secondary" style="display:none;">Stop Kamera</button>
+
+  <p style="text-align:center; color:#888; font-size:13px; margin:8px 0;">— atau foto manual —</p>
+  <input type="file" accept="image/*" capture="environment" id="fileInput" style="width:100%;">
+
+  <div id="status">Menyiapkan OCR...</div>
+
+  <div class="candidate-box" id="candidateBox">
+    <strong>Terdeteksi:</strong>
+    <div class="field">
+      <label>Nama</label>
+      <input type="text" id="candNama">
+    </div>
+    <div class="field">
+      <label>NIK</label>
+      <input type="text" id="candNik" maxlength="16">
+    </div>
+    <div class="field">
+      <label>Tempat Lahir</label>
+      <input type="text" id="candTempat">
+    </div>
+    <div class="field">
+      <label>Tanggal Lahir</label>
+      <input type="text" id="candTgl" placeholder="dd-mm-yyyy">
+    </div>
+    <div class="btn-row">
+      <button id="acceptBtn" class="success">+ Tambah ke Rekap</button>
+      <button id="dismissBtn" class="secondary">Lewati</button>
+    </div>
+  </div>
+
+  <details>
+    <summary>Lihat hasil OCR mentah (frame terakhir)</summary>
+    <textarea id="rawText" readonly></textarea>
+  </details>
+</div>
+
+<div class="card">
+  <strong>Rekap Data (<span id="recapCount">0</span> orang)</strong>
+  <table>
+    <thead>
+      <tr><th>No</th><th>Nama</th><th>NIK</th><th>Tempat Lahir</th><th>Tgl Lahir</th><th></th></tr>
+    </thead>
+    <tbody id="recapBody"></tbody>
+  </table>
+  <div id="recapEmpty" class="empty-msg">Rekap masih kosong</div>
+  <button id="addManualBtn" class="secondary">+ Tambah Baris Manual</button>
+  <div class="btn-row">
+    <button id="downloadBtn" class="success">Download Excel</button>
+    <button id="clearAllBtn" class="danger">Hapus Semua</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/4.1.1/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const video = document.getElementById('video');
+const camWrap = document.getElementById('camWrap');
+const canvas = document.getElementById('canvas');
+const startCamBtn = document.getElementById('startCamBtn');
+const stopCamBtn = document.getElementById('stopCamBtn');
+const fileInput = document.getElementById('fileInput');
+const statusEl = document.getElementById('status');
+const rawTextEl = document.getElementById('rawText');
+const liveBadge = document.getElementById('liveBadge');
+
+const candidateBox = document.getElementById('candidateBox');
+const candNama = document.getElementById('candNama');
+const candNik = document.getElementById('candNik');
+const candTempat = document.getElementById('candTempat');
+const candTgl = document.getElementById('candTgl');
+const acceptBtn = document.getElementById('acceptBtn');
+const dismissBtn = document.getElementById('dismissBtn');
+
+const recapBody = document.getElementById('recapBody');
+const recapEmpty = document.getElementById('recapEmpty');
+const recapCount = document.getElementById('recapCount');
+const addManualBtn = document.getElementById('addManualBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+
+let stream = null;
+let scanTimer = null;
+let scanning = false;       // sedang OCR satu frame?
+let liveActive = false;     // loop live scan aktif?
+let recapRows = [];
+let lastSeenNiks = new Set(); // NIK yg sudah ditambahkan, hindari duplikat
+
+let worker = null;
+let workerReady = false;
+
+const SCAN_GAP_MS = 350;   // jeda singkat antar frame (bukan interval tetap) supaya terasa cepat
+const GENDER_WORDS = ['LAKI-LAKI', 'LAKI LAKI', 'PEREMPUAN'];
+const NIK_REGEX = /\b\d[\d\s]{14,20}\d\b/;
+const NIK_REGEX_G = /\b\d[\d\s]{14,20}\d\b/g;
+const DATE_REGEX = /\b(\d{1,2})[\s.\/-](\d{1,2})[\s.\/-](\d{4})\b/;
+
+// ===== Siapkan worker OCR sekali di awal (kunci kecepatan) =====
+// Worker dipakai berulang, tidak dibuat ulang tiap scan -> jauh lebih cepat
+// dibanding memanggil Tesseract.recognize() langsung tiap frame.
+async function initWorker() {
+  try {
+    worker = await Tesseract.createWorker('ind');
+    workerReady = true;
+    if (checkCameraSupport()) {
+      statusEl.textContent = 'OCR siap. Buka kamera untuk mulai scan.';
+    }
+    // kalau checkCameraSupport() gagal, pesan errornya sudah ditulis di sana
+  } catch (err) {
+    statusEl.textContent = 'Gagal menyiapkan OCR: ' + err.message;
+  }
+}
+initWorker();
+
+async function ocrImage(dataUrlOrUrl, onProgress) {
+  if (!workerReady) {
+    // fallback kalau worker belum siap (jarang terjadi)
+    const res = await Tesseract.recognize(dataUrlOrUrl, 'ind', {
+      logger: onProgress ? (m => onProgress(m)) : undefined
+    });
+    return res.data.text;
+  }
+  const res = await worker.recognize(dataUrlOrUrl);
+  return res.data.text;
+}
+
+// ===== Kamera =====
+
+// Cek dukungan/context dasar begitu halaman dimuat, biar pesan errornya jelas
+function checkCameraSupport() {
+  if (!window.isSecureContext) {
+    statusEl.textContent = 'Kamera tidak bisa diakses: halaman ini harus dibuka lewat HTTPS (atau localhost). Buka file:// langsung di HP biasanya diblokir browser untuk akses kamera.';
+    return false;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    statusEl.textContent = 'Browser ini tidak mendukung akses kamera (getUserMedia tidak tersedia). Coba pakai Chrome/Safari versi terbaru.';
+    return false;
+  }
+  return true;
+}
+
+// Beberapa kombinasi constraint dicoba berurutan, dari yang paling spesifik (kamera belakang,
+// resolusi ideal) ke yang paling longgar (kamera apa saja). Ini menghindari error
+// OverconstrainedError yang sering muncul di HP tertentu.
+const CAMERA_CONSTRAINTS_FALLBACKS = [
+  { video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } } },
+  { video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } } },
+  { video: { facingMode: 'environment' } },
+  { video: true }
+];
+
+async function requestCameraStream() {
+  let lastErr = null;
+  for (const constraints of CAMERA_CONSTRAINTS_FALLBACKS) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      lastErr = err;
+      // Kalau izin ditolak user, tidak ada gunanya coba constraint lain
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') break;
+    }
+  }
+  throw lastErr;
+}
+
+function cameraErrorMessage(err) {
+  switch (err.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'Izin kamera ditolak. Buka pengaturan situs di browser (ikon gembok/info di address bar) → Kamera → Izinkan, lalu muat ulang halaman ini. Di Chrome Android: Menu (⋮) → Info situs → Izin → Kamera → Izinkan.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'Kamera tidak ditemukan di perangkat ini.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'Kamera sedang dipakai aplikasi lain. Tutup aplikasi kamera/video call lain lalu coba lagi.';
+    case 'OverconstrainedError':
+    case 'ConstraintNotSatisfiedError':
+      return 'Kamera tidak mendukung pengaturan yang diminta. Coba lagi (sudah otomatis dicoba beberapa mode).';
+    case 'SecurityError':
+      return 'Akses kamera diblokir karena halaman tidak dibuka lewat HTTPS/localhost.';
+    default:
+      return 'Gagal akses kamera: ' + (err.message || err.name || 'unknown error');
+  }
+}
+
+startCamBtn.onclick = async () => {
+  if (!checkCameraSupport()) return;
+
+  startCamBtn.disabled = true;
+  statusEl.textContent = 'Meminta izin kamera...';
+
+  try {
+    stream = await requestCameraStream();
+    video.srcObject = stream;
+    camWrap.style.display = 'block';
+    startCamBtn.style.display = 'none';
+    stopCamBtn.style.display = 'block';
+    liveBadge.classList.add('on');
+
+    liveActive = true;
+    statusEl.textContent = 'Kamera aktif. Arahkan ke baris Nama & NIK, tahan stabil...';
+    scanLoop();
+  } catch (err) {
+    statusEl.textContent = cameraErrorMessage(err);
+  } finally {
+    startCamBtn.disabled = false;
+  }
+};
+
+stopCamBtn.onclick = () => {
+  stopCamera();
+};
+
+function stopCamera() {
+  liveActive = false;
+  if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  camWrap.style.display = 'none';
+  startCamBtn.style.display = 'block';
+  stopCamBtn.style.display = 'none';
+  liveBadge.classList.remove('on');
+  statusEl.textContent = 'Kamera dihentikan.';
+}
+
+// ===== Live scan loop (jadwal ulang sendiri secepat mungkin, tidak nunggu interval tetap) =====
+function scanLoop() {
+  if (!liveActive) return;
+  scanTimer = setTimeout(async () => {
+    await scanFrame();
+    if (liveActive) scanLoop();
+  }, SCAN_GAP_MS);
+}
+
+async function scanFrame() {
+  if (!liveActive || scanning) return;
+  if (video.videoWidth === 0) return;
+
+  scanning = true;
+  liveBadge.textContent = '● MEMBACA...';
+
+  // Crop area sesuai overlay (tengah, 90% lebar, 40% tinggi mulai dari 30%)
+  const sx = video.videoWidth * 0.05;
+  const sy = video.videoHeight * 0.30;
+  const sw = video.videoWidth * 0.90;
+  const sh = video.videoHeight * 0.40;
+
+  canvas.width = sw;
+  canvas.height = sh;
+  canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+  const dataUrl = canvas.toDataURL('image/png');
+
+  try {
+    const text = await ocrImage(dataUrl);
+    rawTextEl.value = text;
+    tryDetect(text);
+  } catch (err) {
+    // diamkan error per-frame agar loop tetap jalan
+  } finally {
+    scanning = false;
+    if (liveActive) liveBadge.textContent = '● SCANNING';
+  }
+}
+
+// ===== Util bersih teks =====
+function cleanName(str) {
+  return str
+    .replace(/[^A-Za-z\s.'-]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .toUpperCase();
+}
+
+function stripGenderWords(str) {
+  let out = str;
+  GENDER_WORDS.forEach(w => {
+    out = out.replace(new RegExp(w, 'gi'), ' ');
+  });
+  return out;
+}
+
+function cleanPlace(str) {
+  let out = stripGenderWords(str);
+  out = out.replace(/[^A-Za-z\s.'-]/g, ' ').replace(/\s{2,}/g, ' ').trim().toUpperCase();
+  return out;
+}
+
+function normalizeDate(d, m, y) {
+  const dd = d.padStart(2, '0');
+  const mm = m.padStart(2, '0');
+  return dd + '-' + mm + '-' + y;
+}
+
+// ===== Ekstraksi 1 baris (Nama, NIK, Tempat/Tgl Lahir) =====
+function extractPersonFromLine(line, lines, i) {
+  const m = line.match(NIK_REGEX);
+  if (!m) return null;
+
+  const digits = m[0].replace(/\D/g, '');
+  if (digits.length !== 16) return null;
+  if (lastSeenNiks.has(digits)) return null;
+
+  let before = line.slice(0, m.index).trim();
+  before = before.replace(/^[\d.\s|]+/, '').replace(/[|]+$/, '').trim();
+
+  let nama = '';
+  if (before.length >= 3 && /[A-Za-z]/.test(before)) {
+    nama = before;
+  } else if (i > 0) {
+    let prev = lines[i - 1].replace(/^[\d.\s|]+/, '').trim();
+    if (/[A-Za-z]/.test(prev)) nama = prev;
+  }
+  nama = cleanName(nama);
+
+  const after = line.slice(m.index + m[0].length);
+  let tempatLahir = '';
+  let tglLahir = '';
+  const dm = after.match(DATE_REGEX);
+  if (dm) {
+    tglLahir = normalizeDate(dm[1], dm[2], dm[3]);
+    tempatLahir = cleanPlace(after.slice(0, dm.index));
+  } else if (i + 1 < lines.length) {
+    const dm2 = lines[i + 1].match(DATE_REGEX);
+    if (dm2) {
+      tglLahir = normalizeDate(dm2[1], dm2[2], dm2[3]);
+      tempatLahir = cleanPlace(lines[i + 1].slice(0, dm2.index));
+    }
+  }
+
+  return { nama, nik: digits, tempatLahir, tglLahir };
+}
+
+function tryDetect(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  for (let i = 0; i < lines.length; i++) {
+    const person = extractPersonFromLine(lines[i], lines, i);
+    if (person) {
+      showCandidate(person);
+      break; // satu kandidat per scan, biar tidak menumpuk
+    }
+  }
+}
+
+function showCandidate(person) {
+  candNama.value = person.nama;
+  candNik.value = person.nik;
+  candTempat.value = person.tempatLahir;
+  candTgl.value = person.tglLahir;
+  candidateBox.classList.add('show');
+  statusEl.textContent = 'Data terdeteksi! Cek lalu tambahkan ke rekap.';
+  // pause scanning sampai user respon, biar tidak numpuk kandidat
+  if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+}
+
+acceptBtn.onclick = () => {
+  const nama = candNama.value.trim();
+  const nik = candNik.value.trim();
+  const tempatLahir = candTempat.value.trim();
+  const tglLahir = candTgl.value.trim();
+  if (!nik) {
+    alert('NIK kosong, isi dulu atau tekan Lewati.');
+    return;
+  }
+  recapRows.push({ nama, nik, tempatLahir, tglLahir });
+  lastSeenNiks.add(nik);
+  renderRecap();
+  resumeScanning();
+};
+
+dismissBtn.onclick = () => {
+  resumeScanning();
+};
+
+function resumeScanning() {
+  candidateBox.classList.remove('show');
+  candNama.value = '';
+  candNik.value = '';
+  candTempat.value = '';
+  candTgl.value = '';
+  if (liveActive && !scanTimer) {
+    statusEl.textContent = 'Lanjut scanning...';
+    scanLoop();
+  }
+}
+
+// ===== Upload manual (single-shot) =====
+fileInput.onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  stopCamera();
+  const url = URL.createObjectURL(file);
+  statusEl.textContent = 'Memproses gambar...';
+
+  try {
+    const text = await ocrImage(url, m => {
+      if (m.status === 'recognizing text') {
+        statusEl.textContent = 'Membaca teks... ' + Math.round(m.progress * 100) + '%';
+      }
+    });
+    rawTextEl.value = text;
+
+    // untuk upload manual, scan seluruh teks (multi baris) bukan hanya crop
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let found = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const matches = [...lines[i].matchAll(NIK_REGEX_G)];
+      for (const m of matches) {
+        const digits = m[0].replace(/\D/g, '');
+        if (digits.length !== 16 || lastSeenNiks.has(digits)) continue;
+
+        const person = extractPersonFromLine(lines[i], lines, i);
+        if (!person) continue;
+
+        recapRows.push(person);
+        lastSeenNiks.add(person.nik);
+        found++;
+      }
+    }
+    renderRecap();
+    statusEl.textContent = found > 0
+      ? 'Ditambahkan ' + found + ' baris dari gambar.'
+      : 'Tidak ada NIK terdeteksi dari gambar ini.';
+  } catch (err) {
+    statusEl.textContent = 'Gagal OCR: ' + err.message;
+  }
+};
+
+// ===== Render rekap =====
+function renderRecap() {
+  recapBody.innerHTML = '';
+  recapCount.textContent = recapRows.length;
+
+  if (recapRows.length === 0) {
+    recapEmpty.style.display = 'block';
+    return;
+  }
+  recapEmpty.style.display = 'none';
+
+  recapRows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="no-col">${idx + 1}</td>
+      <td><input type="text" value="${escapeHtml(row.nama || '')}" data-idx="${idx}" data-field="nama" class="rec-input"></td>
+      <td><input type="text" value="${escapeHtml(row.nik || '')}" data-idx="${idx}" data-field="nik" maxlength="16" class="rec-input"></td>
+      <td><input type="text" value="${escapeHtml(row.tempatLahir || '')}" data-idx="${idx}" data-field="tempatLahir" class="rec-input"></td>
+      <td><input type="text" value="${escapeHtml(row.tglLahir || '')}" data-idx="${idx}" data-field="tglLahir" placeholder="dd-mm-yyyy" class="rec-input"></td>
+      <td class="row-actions"><button class="small danger" onclick="removeRecap(${idx})">Hapus</button></td>
+    `;
+    recapBody.appendChild(tr);
+  });
+
+  document.querySelectorAll('.rec-input').forEach(inp => {
+    inp.oninput = (e) => {
+      const idx = +e.target.dataset.idx;
+      const field = e.target.dataset.field;
+      recapRows[idx][field] = e.target.value;
+      if (field === 'nik') lastSeenNiks.add(e.target.value.trim());
+    };
+  });
+}
+
+function removeRecap(idx) {
+  lastSeenNiks.delete(recapRows[idx].nik);
+  recapRows.splice(idx, 1);
+  renderRecap();
+}
+
+addManualBtn.onclick = () => {
+  recapRows.push({ nama: '', nik: '', tempatLahir: '', tglLahir: '' });
+  renderRecap();
+};
+
+clearAllBtn.onclick = () => {
+  if (recapRows.length === 0) return;
+  if (confirm('Hapus semua data rekap?')) {
+    recapRows = [];
+    lastSeenNiks.clear();
+    renderRecap();
+  }
+};
+
+// ===== Download Excel =====
+downloadBtn.onclick = () => {
+  if (recapRows.length === 0) {
+    alert('Rekap masih kosong.');
+    return;
+  }
+  const data = [
+    ['No', 'Nama', 'NIK', 'Tempat Lahir', 'Tanggal Lahir'],
+    ...recapRows.map((r, idx) => [idx + 1, r.nama || '', r.nik || '', r.tempatLahir || '', r.tglLahir || ''])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{ wch: 5 }, { wch: 28 }, { wch: 20 }, { wch: 18 }, { wch: 14 }];
+
+  // paksa kolom NIK sebagai teks agar tidak berubah jadi notasi ilmiah
+  for (let i = 1; i <= recapRows.length; i++) {
+    const cell = ws['C' + (i + 1)];
+    if (cell) cell.t = 's';
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Data KK');
+
+  const now = new Date();
+  const fname = 'rekap_kk_' + now.toISOString().slice(0,10) + '.xlsx';
+  XLSX.writeFile(wb, fname);
+};
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+renderRecap();
+</script>
+
+</body>
+</html>
